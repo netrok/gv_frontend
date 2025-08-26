@@ -1,15 +1,17 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { Alert, Box, Button, Card, CardContent, Stack, TextField, Typography } from "@mui/material";
 import { useAuth } from "../state/AuthContext";
 
 const LoginPage: React.FC = () => {
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const nav = useNavigate();
   const [username,setUsername] = React.useState("");
   const [password,setPassword] = React.useState("");
   const [error,setError] = React.useState<string | null>(null);
   const [loading,setLoading] = React.useState(false);
+
+  if (isAuthenticated) return <Navigate to="/" replace />;
 
   const onSubmit = async (e:React.FormEvent) => {
     e.preventDefault();
