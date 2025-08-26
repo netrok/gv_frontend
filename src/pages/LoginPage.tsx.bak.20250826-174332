@@ -33,12 +33,12 @@ const LoginPage: React.FC = () => {
       <Card sx={{ width:"100%", maxWidth:420 }}>
         <CardContent>
           <Stack spacing={2}>
-            <Typography variant="h5" fontWeight={700}>Iniciar sesión</Typography>
+            <Typography variant="h5" fontWeight={700}>Iniciar sesiÃ³n</Typography>
             {error && <Alert severity="error" sx={{whiteSpace:"pre-wrap"}}>{error}</Alert>}
             <form onSubmit={onSubmit}>
               <Stack spacing={2}>
                 <TextField label="Usuario" value={username} onChange={e=>setUsername(e.target.value)} required autoFocus/>
-                <TextField label="Contraseña" type="password" value={password} onChange={e=>setPassword(e.target.value)} required/>
+                <TextField label="ContraseÃ±a" type="password" value={password} onChange={e=>setPassword(e.target.value)} required/>
                 <Button type="submit" variant="contained" disabled={loading}>{loading ? "Entrando..." : "Entrar"}</Button>
               </Stack>
             </form>
@@ -50,5 +50,4 @@ const LoginPage: React.FC = () => {
 };
 
 export default LoginPage;
-
 

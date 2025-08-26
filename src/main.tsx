@@ -1,12 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { CssBaseline, ThemeProvider } from "@mui/material";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider, CssBaseline } from "@mui/material";
 import App from "./App";
 import theme from "./theme";
-import RootErrorBoundary from "./error/RootErrorBoundary";
 import { AuthProvider } from "./state/AuthContext";
+import { ToastProvider } from "./state/ToastContext";
 
 const queryClient = new QueryClient();
 
@@ -14,7 +14,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <RootErrorBoundary>
+      <ToastProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <BrowserRouter>
@@ -22,7 +22,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             </BrowserRouter>
           </AuthProvider>
         </QueryClientProvider>
-      </RootErrorBoundary>
+      </ToastProvider>
     </ThemeProvider>
   </React.StrictMode>
 );
+
+
+

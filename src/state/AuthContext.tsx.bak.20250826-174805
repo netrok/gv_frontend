@@ -48,7 +48,7 @@ async function tryLoginCandidates(username: string, password: string) {
       errors.push(`POST ${path}  ${msg}`);
     }
   }
-  throw new Error("No se pudo iniciar sesión:\n" + errors.join("\n"));
+  throw new Error("No se pudo iniciar sesiÃ³n:\n" + errors.join("\n"));
 }
 
 async function tryMeCandidates() {
@@ -125,5 +125,4 @@ export const useAuth = () => {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 };
-
 

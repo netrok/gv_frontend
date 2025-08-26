@@ -58,8 +58,8 @@ const DebugAuth: React.FC = () => {
       <Card sx={{ width:"100%", maxWidth:720 }}>
         <CardContent>
           <Stack spacing={2}>
-            <Typography variant="h6">Debug de Autenticación</Typography>
-            <Alert severity="info">Usa esto para ver qué endpoint responde y si hay tokens.</Alert>
+            <Typography variant="h6">Debug de AutenticaciÃ³n</Typography>
+            <Alert severity="info">Usa esto para ver quÃ© endpoint responde y si hay tokens.</Alert>
             <Stack direction="row" spacing={1} flexWrap="wrap">
               <Button variant="outlined" onClick={showInfo}>Info</Button>
               <Button variant="outlined" onClick={testMe}>Probar /me</Button>
@@ -77,6 +77,4 @@ const DebugAuth: React.FC = () => {
 };
 
 export default DebugAuth;
-
-
 

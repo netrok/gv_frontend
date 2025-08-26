@@ -1,0 +1,11 @@
+export function fixMojibake(s?: string) {
+  if (!s) return s ?? "";
+  // Si huele a mojibake comÃºn (Ãƒ, Ã‚), reinterpreta bytes como UTF-8
+  if (/Ãƒ.|Ã‚./.test(s)) {
+    try {
+      const bytes = new Uint8Array([...s].map(ch => ch.charCodeAt(0)));
+      return new TextDecoder("utf-8").decode(bytes);
+    } catch { /* ignore */ }
+  }
+  return s;
+}

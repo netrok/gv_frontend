@@ -1,0 +1,27 @@
+﻿export async function safeFetchJson(input: RequestInfo | URL, init?: RequestInit) {
+  const res = await fetch(input, {
+    ...init,
+    headers: { Accept: "application/json", ...(init?.headers || {}) },
+  });
+
+  // Primero intenta el camino normal
+  try {
+    return await res.clone().json();
+  } catch {
+    // Fallback: leer bytes y decodificar manualmente
+    const buf = await res.arrayBuffer();
+    let text = new TextDecoder("utf-8").decode(buf);
+
+    // Mojibake tÃ­pico: 'Ãƒ', 'Ã‚' o caracteres de reemplazo
+    if (/Ãƒ.|Ã‚.|\uFFFD/.test(text)) {
+      const u8 = new Uint8Array(buf);
+      // reconstruye string Latin-1 a partir de los mismos bytes
+      const latin1 = Array.from(u8, b => String.fromCharCode(b)).join("");
+      // vuelve a convertir a bytes y decodifica como UTF-8
+      const bytes = new Uint8Array([...latin1].map(ch => ch.charCodeAt(0)));
+      text = new TextDecoder("utf-8").decode(bytes);
+    }
+
+    return JSON.parse(text);
+  }
+}

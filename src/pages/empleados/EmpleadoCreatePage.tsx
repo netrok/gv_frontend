@@ -25,3 +25,4 @@ export default function EmpleadoCreatePage(){
 
   return <EmpleadoForm onSubmit={handleSubmit} loading={loading} error={error} submitLabel="Crear" />;
 }
+

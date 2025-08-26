@@ -20,16 +20,15 @@ export default class RootErrorBoundary extends React.Component<{children: React.
     if(this.state.hasError){
       return (
         <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
-          <h1> Ocurrió un error en la UI</h1>
+          <h1> OcurriÃ³ un error en la UI</h1>
           <pre style={{ whiteSpace: "pre-wrap", background: "#f6f6f6", padding: 12, borderRadius: 8, overflow: "auto" }}>
             {String(this.state.error?.message ?? this.state.error ?? "Error")}
           </pre>
-          <p>Revisa la consola del navegador (F12) para más detalles.</p>
+          <p>Revisa la consola del navegador (F12) para mÃ¡s detalles.</p>
         </div>
       );
     }
     return this.props.children;
   }
 }
-
 

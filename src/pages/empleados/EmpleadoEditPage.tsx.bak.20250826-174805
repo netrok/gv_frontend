@@ -63,9 +63,8 @@ export default function EmpleadoEditPage(){
   };
 
   if (loading) return <Box sx={{display:"grid",placeItems:"center",minHeight:"50vh"}}><CircularProgress/></Box>;
-  if (!empleado) return <Box sx={{p:2}}>No se encontró el empleado.</Box>;
+  if (!empleado) return <Box sx={{p:2}}>No se encontrÃ³ el empleado.</Box>;
 
   return <EmpleadoForm defaultValues={empleado} onSubmit={handleSubmit} loading={saving} error={error} submitLabel="Guardar" />;
 }
-
 

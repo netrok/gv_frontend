@@ -13,8 +13,14 @@ import api from "../../lib/api";
 import type { Empleado } from "../../types";
 import EmpleadoForm from "./EmpleadoForm";
 import type { EmpleadoFormValues } from "./EmpleadoForm";
+import { useToast } from "../../state/ToastContext";
+import { fetchEmpleadoChoices, coerceEmpleadoPayload } from "../../lib/choices";
 
-function normalize<T>(data:any): T[] { if (Array.isArray(data)) return data; if (data?.results) return data.results; return []; }
+function normalize<T>(data:any): T[] {
+  if (Array.isArray(data)) return data;
+  if (data?.results) return data.results;
+  return [];
+}
 
 async function fetchEmpleados(search: string) {
   const params: any = {}; if (search) params.search = search;
@@ -24,14 +30,26 @@ async function fetchEmpleados(search: string) {
   return { rows, total };
 }
 
-const columns: GridColDef[] = [
+const columns: GridColDef<Empleado>[] = [
   { field: "id", headerName: "ID", width: 80 },
   { field: "num_empleado", headerName: "No.", width: 110 },
   { field: "nombres", headerName: "Nombres", width: 160 },
   { field: "apellido_paterno", headerName: "Apellido Paterno", width: 170 },
   { field: "apellido_materno", headerName: "Apellido Materno", width: 170 },
-  { field: "puesto", headerName: "Puesto", width: 160, valueGetter: (_:any, row:any) => row?.puesto?.nombre ?? row?.puesto ?? "" },
-  { field: "departamento", headerName: "Departamento", width: 180, valueGetter: (_:any, row:any) => row?.departamento?.nombre ?? row?.departamento ?? "" },
+  {
+    field: "puesto",
+    headerName: "Puesto",
+    width: 160,
+    valueGetter: (_value, row) =>
+      (row as any)?.puesto?.nombre ?? (row as any)?.puesto ?? "",
+  },
+  {
+    field: "departamento",
+    headerName: "Departamento",
+    width: 180,
+    valueGetter: (_value, row) =>
+      (row as any)?.departamento?.nombre ?? (row as any)?.departamento ?? "",
+  },
   { field: "fecha_ingreso", headerName: "Ingreso", width: 120 },
   { field: "activo", headerName: "Activo", type: "boolean", width: 100 },
   {
@@ -40,35 +58,63 @@ const columns: GridColDef[] = [
     width: 130,
     sortable: false,
     filterable: false,
-    renderCell: (params) => <RowActions id={params.row.id} />,
+    renderCell: (params) => <RowActions id={Number(params.id)} />,
   },
 ];
 
 function RowActions({ id }: { id: number }) {
   const nav = useNavigate();
   const qc = useQueryClient();
+  const { showToast } = useToast();
+
   const handleDelete = async () => {
-    if (!confirm("¿Eliminar este empleado?")) return;
-    await api.delete(`/v1/empleados/${id}/`);
-    qc.invalidateQueries({ queryKey: ["empleados"] });
+    if (!confirm("Â¿Eliminar este empleado?")) return;
+    try {
+      await api.delete(`/v1/empleados/${id}/`);
+      qc.invalidateQueries({ queryKey: ["empleados"] });
+      showToast("Empleado eliminado", "success");
+      localStorage.removeItem(`empleado:edit:${id}`);
+    } catch {
+      showToast("Error al eliminar", "error");
+    }
   };
   return (
     <Stack direction="row" spacing={1}>
-      <IconButton size="small" onClick={() => nav(`/empleados/${id}/editar`)} aria-label="editar"><Edit fontSize="small" /></IconButton>
-      <IconButton size="small" onClick={handleDelete} color="error" aria-label="eliminar"><Delete fontSize="small" /></IconButton>
+      <IconButton size="small" onClick={() => nav(`/empleados/${id}/editar`)} aria-label="editar">
+        <Edit fontSize="small" />
+      </IconButton>
+      <IconButton size="small" onClick={handleDelete} color="error" aria-label="eliminar">
+        <Delete fontSize="small" />
+      </IconButton>
     </Stack>
   );
 }
 
 const EmpleadosPage: React.FC = () => {
   const [search, setSearch] = React.useState("");
-  const { data, isLoading, error } = useQuery({ queryKey: ["empleados", search], queryFn: () => fetchEmpleados(search) });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["empleados", search],
+    queryFn: () => fetchEmpleados(search),
+  });
 
   const qc = useQueryClient();
   const nav = useNavigate();
   const location = useLocation();
+  const { showToast } = useToast();
 
-  // ====== Modal Crear (ya lo tenías)
+  // ====== Choices desde OPTIONS (para mapear estado_civil, genero, etc.)
+  const choicesRef = React.useRef<Record<string, any[]>>({});
+  React.useEffect(() => {
+    (async () => {
+      try {
+        choicesRef.current = await fetchEmpleadoChoices();
+      } catch {
+        choicesRef.current = {}; // fallback
+      }
+    })();
+  }, []);
+
+  // ====== Modal Crear
   const isCreateRoute = location.pathname.endsWith("/empleados/nuevo");
   const [openCreate, setOpenCreate] = React.useState(isCreateRoute);
   React.useEffect(() => { setOpenCreate(isCreateRoute); }, [isCreateRoute]);
@@ -76,7 +122,7 @@ const EmpleadosPage: React.FC = () => {
   const openCreateModal = () => nav("/empleados/nuevo");
   const closeCreateModal = () => nav("/empleados");
 
-  // ====== Modal Editar (nuevo)
+  // ====== Modal Editar
   const matchEdit = location.pathname.match(/\/empleados\/(\d+)\/editar$/);
   const editId = matchEdit ? Number(matchEdit[1]) : null;
   const isEditRoute = editId != null;
@@ -107,7 +153,7 @@ const EmpleadosPage: React.FC = () => {
     return () => { active = false; };
   }, [isEditRoute, editId]);
 
-  // ====== Descubre campos aceptados (para POST y PUT)
+  // ====== Campos permitidos (POST/PUT)
   const allowedFieldsRef = React.useRef<Set<string> | null>(null);
   React.useEffect(() => {
     (async () => {
@@ -120,15 +166,20 @@ const EmpleadosPage: React.FC = () => {
       } catch {
         allowedFieldsRef.current = new Set([
           "num_empleado","nombres","apellido_paterno","apellido_materno",
-          "departamento","puesto","fecha_ingreso","activo"
+          "departamento","puesto","fecha_ingreso","activo","email",
+          "genero","estado_civil","contrato","jornada","turno"
         ]);
       }
     })();
   }, []);
 
   function filterPayloadForBackend(values: EmpleadoFormValues) {
+    // 1) Mapear texto del usuario a los cÃ³digos/values que espera el back (choices)
+    const coerced = coerceEmpleadoPayload(values as any, choicesRef.current);
+
+    // 2) Filtrar por campos permitidos
     const set = allowedFieldsRef.current;
-    const base = { ...values, departamento: values.departamento, puesto: values.puesto };
+    const base = { ...coerced, departamento: coerced.departamento, puesto: coerced.puesto };
     if (!set) return base;
     const out: any = {};
     for (const k of Object.keys(base)) {
@@ -137,6 +188,7 @@ const EmpleadosPage: React.FC = () => {
     return out;
   }
 
+  // ====== Crear
   const [savingCreate, setSavingCreate] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const handleCreate = async (values: EmpleadoFormValues) => {
@@ -145,15 +197,19 @@ const EmpleadosPage: React.FC = () => {
       const payload = filterPayloadForBackend(values);
       await api.post("/v1/empleados/", payload);
       await qc.invalidateQueries({ queryKey: ["empleados"] });
+      showToast("Empleado creado", "success");
+      localStorage.removeItem("empleado:create");
       closeCreateModal();
     }catch(e:any){
       const msg = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : String(e?.message || e);
       setCreateError(msg);
+      showToast("Error al crear", "error");
     }finally{
       setSavingCreate(false);
     }
   };
 
+  // ====== Editar
   const [savingEdit, setSavingEdit] = React.useState(false);
   const [saveEditError, setSaveEditError] = React.useState<string | null>(null);
   const handleUpdate = async (values: EmpleadoFormValues) => {
@@ -163,10 +219,13 @@ const EmpleadosPage: React.FC = () => {
       const payload = filterPayloadForBackend(values);
       await api.put(`/v1/empleados/${editId}/`, payload);
       await qc.invalidateQueries({ queryKey: ["empleados"] });
+      showToast("Cambios guardados", "success");
+      localStorage.removeItem(`empleado:edit:${editId}`);
       closeEditModal();
     }catch(e:any){
       const msg = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : String(e?.message || e);
       setSaveEditError(msg);
+      showToast("Error al guardar", "error");
     }finally{
       setSavingEdit(false);
     }
@@ -188,8 +247,14 @@ const EmpleadosPage: React.FC = () => {
         </Stack>
         {error && <Typography color="error" sx={{ mb: 1 }}>Error cargando empleados</Typography>}
         <Box sx={{ height: 600 }}>
-          <DataGrid rows={data?.rows ?? []} columns={columns} loading={isLoading} getRowId={(r) => r.id}
-            pageSizeOptions={[10, 25, 50]} initialState={{ pagination: { paginationModel: { pageSize: 25 } } }} />
+          <DataGrid
+            rows={data?.rows ?? []}
+            columns={columns}
+            loading={isLoading}
+            getRowId={(r) => r.id}
+            pageSizeOptions={[10, 25, 50]}
+            initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+          />
         </Box>
       </Paper>
 
@@ -258,3 +323,4 @@ const EmpleadosPage: React.FC = () => {
 };
 
 export default EmpleadosPage;
+

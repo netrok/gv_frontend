@@ -34,14 +34,30 @@ export default function App() {
     <Routes>
       <Route element={<Shell />}>
         <Route index element={<Dashboard />} />
+
+        {/* Empleados (tabla + modales) */}
         <Route path="empleados" element={<EmpleadosPage />} />
         <Route path="empleados/nuevo" element={<EmpleadosPage />} />
         <Route path="empleados/:id/editar" element={<EmpleadosPage />} />
+
+        {/* Departamentos (tabla + modales) */}
         <Route path="departamentos" element={<DepartamentosPage />} />
+        <Route path="departamentos/nuevo" element={<DepartamentosPage />} />
+        <Route path="departamentos/:id/editar" element={<DepartamentosPage />} />
+
+        {/* Puestos (tabla + modales) */}
         <Route path="puestos" element={<PuestosPage />} />
+        <Route path="puestos/nuevo" element={<PuestosPage />} />
+        <Route path="puestos/:id/editar" element={<PuestosPage />} />
+
         <Route path="debug" element={<DebugAuth />} />
       </Route>
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
+
+
+
+

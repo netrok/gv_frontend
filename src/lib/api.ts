@@ -1,56 +1,91 @@
+// src/lib/api.ts
 import axios from "axios";
+import type { AxiosError, AxiosResponse } from "axios"; // <- type-only import ✅
+import {
+  deepFixMojibake,
+  tryFixUtf8,
+  latin1StringToUtf8,
+  looksMojibake,
+} from "./utf8";
 
-const API_URL = import.meta.env.VITE_API_URL as string; // ej: http://localhost:8000/api
+/** VITE_API_URL debe terminar en /api (ej. http://localhost:8000/api) */
+const baseURL =
+  import.meta.env.VITE_API_URL?.toString() || "http://localhost:8000/api";
 
-const api = axios.create({ baseURL: API_URL });
-
-function getTokens() {
-  const access = localStorage.getItem("access_token");
-  const refresh = localStorage.getItem("refresh_token");
-  return { access, refresh };
-}
+const api = axios.create({
+  baseURL,
+  withCredentials: false,
+  timeout: 15000,
+  headers: {
+    Accept: "application/json, text/plain, */*",
+    "Accept-Charset": "utf-8",
+  },
+});
 
 api.interceptors.request.use((config) => {
-  const { access } = getTokens();
+  const access = localStorage.getItem("access_token");
   if (access) config.headers.Authorization = `Bearer ${access}`;
   return config;
 });
 
-let refreshing = false;
-let queue: Array<(t: string) => void> = [];
-const onRefreshed = (t: string) => { queue.forEach((cb) => cb(t)); queue = []; };
+const isLikelyJson = (ct: string) =>
+  ct.includes("application/json") || ct.includes("text/json") || ct.includes("+json");
+const looksLikeJsonText = (s: string) => /^\s*[\[{"]/.test(s);
 
 api.interceptors.response.use(
-  (r) => r,
-  async (error) => {
-    const original: any = error.config;
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true;
-      const { refresh } = getTokens();
-      if (!refresh) throw error;
+  (resp: AxiosResponse) => {
+    try {
+      const ct = String(resp.headers?.["content-type"] || "").toLowerCase();
+      const data = resp.data;
 
-      if (refreshing) {
-        return new Promise((resolve) => {
-          queue.push((t) => { original.headers.Authorization = `Bearer ${t}`; resolve(api(original)); });
-        });
+      if (typeof data === "string") {
+        let text = data;
+
+        if (isLikelyJson(ct) || looksLikeJsonText(text)) {
+          if (looksMojibake(text)) {
+            text = latin1StringToUtf8(text);
+            if (looksMojibake(text)) text = latin1StringToUtf8(text);
+          }
+          try {
+            resp.data = deepFixMojibake(JSON.parse(text));
+          } catch {
+            resp.data = tryFixUtf8(text);
+          }
+        } else {
+          resp.data = tryFixUtf8(text);
+        }
+        return resp;
       }
 
-      refreshing = true;
-      try {
-        const { data } = await axios.post(`${API_URL}/token/refresh/`, { refresh });
-        localStorage.setItem("access_token", data.access);
-        refreshing = false;
-        onRefreshed(data.access);
-        original.headers.Authorization = `Bearer ${data.access}`;
-        return api(original);
-      } catch (e) {
-        refreshing = false;
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        window.location.href = "/login";
-        return Promise.reject(e);
+      if (data && typeof data === "object") {
+        resp.data = deepFixMojibake(data);
       }
+      return resp;
+    } catch {
+      return resp;
     }
+  },
+  (error: AxiosError) => {
+    try {
+      const ct = String(error?.response?.headers?.["content-type"] || "").toLowerCase();
+      let d: any = error?.response?.data;
+
+      if (typeof d === "string") {
+        if (looksMojibake(d)) {
+          d = latin1StringToUtf8(d);
+          if (looksMojibake(d)) d = latin1StringToUtf8(d);
+        }
+        error.response!.data =
+          isLikelyJson(ct) || looksLikeJsonText(d)
+            ? (() => {
+                try { return deepFixMojibake(JSON.parse(d)); }
+                catch { return tryFixUtf8(d); }
+              })()
+            : tryFixUtf8(d);
+      } else if (d && typeof d === "object") {
+        error.response!.data = deepFixMojibake(d);
+      }
+    } catch { /* ignore */ }
     return Promise.reject(error);
   }
 );
