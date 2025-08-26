@@ -1,0 +1,79 @@
+import React from "react";
+import { Alert, Box, Button, Card, CardContent, Stack, Typography } from "@mui/material";
+import api from "../lib/api";
+import { useAuth } from "../state/AuthContext";
+
+const API_URL = import.meta.env.VITE_API_URL as string;
+
+const DebugAuth: React.FC = () => {
+  const [log, setLog] = React.useState<string>("");
+  const { refreshMe } = useAuth();
+
+  const append = (line: string) => setLog((prev) => prev + (prev ? "\n" : "") + line);
+
+  const showInfo = () => {
+    setLog("");
+    append(`API_URL: ${API_URL}`);
+    append(`access_token: ${localStorage.getItem("access_token") ? "OK" : "NO"}`);
+    append(`refresh_token: ${localStorage.getItem("refresh_token") ? "OK" : "NO"}`);
+  };
+
+  const testMe = async () => {
+    setLog("");
+    const paths = ["/me", "/me/", "/v1/me", "/v1/me/", "/auth/users/me/"];
+    for (const p of paths) {
+      try {
+        const { data } = await api.get(p);
+        append(`GET ${p}  -> ${JSON.stringify(data)}`);
+      } catch (e: any) {
+        const msg =
+          e?.response?.data?.detail ??
+          e?.response?.statusText ??
+          e?.message ??
+          "Error";
+        append(`GET ${p}  -> ${msg}`);
+      }
+    }
+  };
+
+  const clearTokens = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    append("Tokens limpiados.");
+  };
+
+  const forceRefreshMe = async () => {
+    try {
+      await refreshMe();
+      append("refreshMe() ejecutado.");
+    } catch (e: any) {
+      append("refreshMe() error: " + String(e?.message ?? e));
+    }
+  };
+
+  React.useEffect(() => { showInfo(); }, []);
+
+  return (
+    <Box sx={{ display:"grid", placeItems:"center" }}>
+      <Card sx={{ width:"100%", maxWidth:720 }}>
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant="h6">Debug de Autenticación</Typography>
+            <Alert severity="info">Usa esto para ver qué endpoint responde y si hay tokens.</Alert>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Button variant="outlined" onClick={showInfo}>Info</Button>
+              <Button variant="outlined" onClick={testMe}>Probar /me</Button>
+              <Button variant="outlined" onClick={forceRefreshMe}>Refrescar /me</Button>
+              <Button color="warning" variant="contained" onClick={clearTokens}>Limpiar tokens</Button>
+            </Stack>
+            <pre style={{ whiteSpace:"pre-wrap", background:"#f6f6f6", padding:12, borderRadius:8, minHeight:200 }}>
+{log}
+            </pre>
+          </Stack>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+};
+
+export default DebugAuth;

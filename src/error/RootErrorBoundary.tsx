@@ -1,0 +1,33 @@
+import React from "react";
+
+type State = { hasError: boolean; error?: any };
+
+export default class RootErrorBoundary extends React.Component<{children: React.ReactNode}, State> {
+  constructor(props:any){
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error:any){
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error:any, info:any){
+    console.error("RootErrorBoundary:", error, info);
+  }
+
+  render(){
+    if(this.state.hasError){
+      return (
+        <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
+          <h1> Ocurrió un error en la UI</h1>
+          <pre style={{ whiteSpace: "pre-wrap", background: "#f6f6f6", padding: 12, borderRadius: 8, overflow: "auto" }}>
+            {String(this.state.error?.message ?? this.state.error ?? "Error")}
+          </pre>
+          <p>Revisa la consola del navegador (F12) para más detalles.</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}

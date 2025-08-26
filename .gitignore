@@ -1,0 +1,14 @@
+# Node/Vite
+node_modules/
+dist/
+.vite/
+
+# Entornos
+.env
+.env.local
+.env.*.local
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
