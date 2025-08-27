@@ -1,151 +1,92 @@
+// src/pages/empleados/EmpleadosPage.tsx
 import React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { DataGrid } from "@mui/x-data-grid";
-import type { GridColDef } from "@mui/x-data-grid";
 import {
-  Box, IconButton, Paper, Stack, TextField, Typography, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions, useTheme, useMediaQuery,
-  CircularProgress
+  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
+  Paper, Stack, TextField, Typography, useMediaQuery, useTheme, Chip, Grid
 } from "@mui/material";
+import { Close, Edit as EditIcon } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Delete, Edit, Close } from "@mui/icons-material";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../../lib/api";
-import type { Empleado } from "../../types";
+import { useToast } from "../../state/ToastContext";
+import EmpleadosTable from "./EmpleadosTable";
 import EmpleadoForm from "./EmpleadoForm";
 import type { EmpleadoFormValues } from "./EmpleadoForm";
-import { useToast } from "../../state/ToastContext";
-import { fetchEmpleadoChoices, coerceEmpleadoPayload } from "../../lib/choices";
 
-function normalize<T>(data:any): T[] {
-  if (Array.isArray(data)) return data;
-  if (data?.results) return data.results;
-  return [];
-}
+/* helpers locales */
+const toTitle = (s?: string) =>
+  (s ?? "")
+    .toLowerCase()
+    .replace(/\b([a-záéíóúñü]+)\b/gi, (w) =>
+      /^(de|del|la|las|los|y|o)$/.test(w) ? w : w[0].toUpperCase() + w.slice(1)
+    );
+const fmtDate = (iso?: string) =>
+  iso ? new Date(iso).toLocaleDateString("es-MX", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
 
-async function fetchEmpleados(search: string) {
-  const params: any = {}; if (search) params.search = search;
-  const { data } = await api.get("/v1/empleados/", { params });
-  const rows = normalize<Empleado>(data);
-  const total = Array.isArray(data) ? rows.length : data.count ?? rows.length;
-  return { rows, total };
-}
+/* helpers para catálogos */
+const getList = (resp: any) =>
+  Array.isArray(resp) ? resp
+  : Array.isArray(resp?.data) ? resp.data
+  : Array.isArray(resp?.results) ? resp.results
+  : [];
+const toMap = (arr: any[], key = "id", label = "nombre") =>
+  Object.fromEntries(arr.map((x) => [String(x?.[key]), x?.[label] ?? "—"]));
 
-const columns: GridColDef<Empleado>[] = [
-  { field: "id", headerName: "ID", width: 80 },
-  { field: "num_empleado", headerName: "No.", width: 110 },
-  { field: "nombres", headerName: "Nombres", width: 160 },
-  { field: "apellido_paterno", headerName: "Apellido Paterno", width: 170 },
-  { field: "apellido_materno", headerName: "Apellido Materno", width: 170 },
-  {
-    field: "puesto",
-    headerName: "Puesto",
-    width: 160,
-    valueGetter: (_value, row) =>
-      (row as any)?.puesto?.nombre ?? (row as any)?.puesto ?? "",
-  },
-  {
-    field: "departamento",
-    headerName: "Departamento",
-    width: 180,
-    valueGetter: (_value, row) =>
-      (row as any)?.departamento?.nombre ?? (row as any)?.departamento ?? "",
-  },
-  { field: "fecha_ingreso", headerName: "Ingreso", width: 120 },
-  { field: "activo", headerName: "Activo", type: "boolean", width: 100 },
-  {
-    field: "acciones",
-    headerName: "Acciones",
-    width: 130,
-    sortable: false,
-    filterable: false,
-    renderCell: (params) => <RowActions id={Number(params.id)} />,
-  },
-];
-
-function RowActions({ id }: { id: number }) {
-  const nav = useNavigate();
-  const qc = useQueryClient();
-  const { showToast } = useToast();
-
-  const handleDelete = async () => {
-    if (!confirm("¿Eliminar este empleado?")) return;
-    try {
-      await api.delete(`/v1/empleados/${id}/`);
-      qc.invalidateQueries({ queryKey: ["empleados"] });
-      showToast("Empleado eliminado", "success");
-      localStorage.removeItem(`empleado:edit:${id}`);
-    } catch {
-      showToast("Error al eliminar", "error");
-    }
-  };
-  return (
-    <Stack direction="row" spacing={1}>
-      <IconButton size="small" onClick={() => nav(`/empleados/${id}/editar`)} aria-label="editar">
-        <Edit fontSize="small" />
-      </IconButton>
-      <IconButton size="small" onClick={handleDelete} color="error" aria-label="eliminar">
-        <Delete fontSize="small" />
-      </IconButton>
-    </Stack>
-  );
-}
-
-const EmpleadosPage: React.FC = () => {
+export default function EmpleadosPage() {
   const [search, setSearch] = React.useState("");
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["empleados", search],
-    queryFn: () => fetchEmpleados(search),
-  });
-
-  const qc = useQueryClient();
   const nav = useNavigate();
   const location = useLocation();
+  const qc = useQueryClient();
   const { showToast } = useToast();
 
-  // ====== Choices desde OPTIONS (para mapear estado_civil, genero, etc.)
-  const choicesRef = React.useRef<Record<string, any[]>>({});
-  React.useEffect(() => {
-    (async () => {
-      try {
-        choicesRef.current = await fetchEmpleadoChoices();
-      } catch {
-        choicesRef.current = {}; // fallback
-      }
-    })();
-  }, []);
-
-  // ====== Modal Crear
+  /* ===== Crear ===== */
   const isCreateRoute = location.pathname.endsWith("/empleados/nuevo");
   const [openCreate, setOpenCreate] = React.useState(isCreateRoute);
   React.useEffect(() => { setOpenCreate(isCreateRoute); }, [isCreateRoute]);
-
   const openCreateModal = () => nav("/empleados/nuevo");
   const closeCreateModal = () => nav("/empleados");
 
-  // ====== Modal Editar
+  const [savingCreate, setSavingCreate] = React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+  const handleCreate = async (values: EmpleadoFormValues) => {
+    setSavingCreate(true); setCreateError(null);
+    try {
+      await api.post("/v1/empleados/", values as any);
+      await qc.invalidateQueries({ queryKey: ["empleados"] });
+      showToast("Empleado creado", "success");
+      closeCreateModal();
+    } catch (e: any) {
+      const msg = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : String(e?.message || e);
+      setCreateError(msg);
+      showToast("Error al crear", "error");
+    } finally {
+      setSavingCreate(false);
+    }
+  };
+
+  /* ===== Editar ===== */
   const matchEdit = location.pathname.match(/\/empleados\/(\d+)\/editar$/);
   const editId = matchEdit ? Number(matchEdit[1]) : null;
   const isEditRoute = editId != null;
   const [openEdit, setOpenEdit] = React.useState(isEditRoute);
   React.useEffect(() => { setOpenEdit(isEditRoute); }, [isEditRoute]);
-
-  const [editLoading, setEditLoading] = React.useState(false);
-  const [editError, setEditError] = React.useState<string | null>(null);
-  const [editData, setEditData] = React.useState<Empleado | null>(null);
   const closeEditModal = () => nav("/empleados");
+
+  const [savingEdit, setSavingEdit] = React.useState(false);
+  const [saveEditError, setSaveEditError] = React.useState<string | null>(null);
+  const [editData, setEditData] = React.useState<any>(null);
+  const [editLoading, setEditLoading] = React.useState(false);
 
   React.useEffect(() => {
     let active = true;
     if (!isEditRoute) return;
-    setEditLoading(true);
-    setEditError(null);
-    setEditData(null);
+    setEditLoading(true); setEditData(null); setSaveEditError(null);
     (async () => {
       try {
         const { data } = await api.get(`/v1/empleados/${editId}/`);
         if (active) setEditData(data);
-      } catch (e:any) {
-        if (active) setEditError(String(e?.message ?? e));
+      } catch (e: any) {
+        if (active) setSaveEditError(String(e?.message ?? e));
       } finally {
         if (active) setEditLoading(false);
       }
@@ -153,129 +94,195 @@ const EmpleadosPage: React.FC = () => {
     return () => { active = false; };
   }, [isEditRoute, editId]);
 
-  // ====== Campos permitidos (POST/PUT)
-  const allowedFieldsRef = React.useRef<Set<string> | null>(null);
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await api.options("/v1/empleados/");
-        const postFields = Object.keys(data?.actions?.POST ?? {});
-        const putFields  = Object.keys(data?.actions?.PUT ?? data?.actions?.PATCH ?? {});
-        const union = new Set<string>([...postFields, ...putFields]);
-        allowedFieldsRef.current = union.size ? union : new Set(postFields);
-      } catch {
-        allowedFieldsRef.current = new Set([
-          "num_empleado","nombres","apellido_paterno","apellido_materno",
-          "departamento","puesto","fecha_ingreso","activo","email",
-          "genero","estado_civil","contrato","jornada","turno"
-        ]);
-      }
-    })();
-  }, []);
-
-  function filterPayloadForBackend(values: EmpleadoFormValues) {
-    // 1) Mapear texto del usuario a los códigos/values que espera el back (choices)
-    const coerced = coerceEmpleadoPayload(values as any, choicesRef.current);
-
-    // 2) Filtrar por campos permitidos
-    const set = allowedFieldsRef.current;
-    const base = { ...coerced, departamento: coerced.departamento, puesto: coerced.puesto };
-    if (!set) return base;
-    const out: any = {};
-    for (const k of Object.keys(base)) {
-      if (set.has(k) && base[k] !== "" && base[k] !== undefined) out[k] = base[k];
-    }
-    return out;
-  }
-
-  // ====== Crear
-  const [savingCreate, setSavingCreate] = React.useState(false);
-  const [createError, setCreateError] = React.useState<string | null>(null);
-  const handleCreate = async (values: EmpleadoFormValues) => {
-    setSavingCreate(true); setCreateError(null);
-    try{
-      const payload = filterPayloadForBackend(values);
-      await api.post("/v1/empleados/", payload);
-      await qc.invalidateQueries({ queryKey: ["empleados"] });
-      showToast("Empleado creado", "success");
-      localStorage.removeItem("empleado:create");
-      closeCreateModal();
-    }catch(e:any){
-      const msg = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : String(e?.message || e);
-      setCreateError(msg);
-      showToast("Error al crear", "error");
-    }finally{
-      setSavingCreate(false);
-    }
-  };
-
-  // ====== Editar
-  const [savingEdit, setSavingEdit] = React.useState(false);
-  const [saveEditError, setSaveEditError] = React.useState<string | null>(null);
   const handleUpdate = async (values: EmpleadoFormValues) => {
     if (!editId) return;
     setSavingEdit(true); setSaveEditError(null);
-    try{
-      const payload = filterPayloadForBackend(values);
-      await api.put(`/v1/empleados/${editId}/`, payload);
+    try {
+      await api.put(`/v1/empleados/${editId}/`, values as any);
       await qc.invalidateQueries({ queryKey: ["empleados"] });
       showToast("Cambios guardados", "success");
-      localStorage.removeItem(`empleado:edit:${editId}`);
       closeEditModal();
-    }catch(e:any){
+    } catch (e: any) {
       const msg = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : String(e?.message || e);
       setSaveEditError(msg);
       showToast("Error al guardar", "error");
-    }finally{
+    } finally {
       setSavingEdit(false);
     }
   };
 
-  //  Modal XL y responsive
+  /* ===== Eliminar ===== */
+  const handleDelete = async (id: number | string) => {
+    if (!confirm("¿Eliminar este empleado?")) return;
+    try {
+      await api.delete(`/v1/empleados/${id}/`);
+      await qc.invalidateQueries({ queryKey: ["empleados"] });
+      showToast("Empleado eliminado", "success");
+    } catch {
+      showToast("Error al eliminar", "error");
+    }
+  };
+
+  /* ===== Ver (MODAL) ===== */
+  const [openView, setOpenView] = React.useState(false);
+  const [viewId, setViewId] = React.useState<number | string | null>(null);
+  const [viewData, setViewData] = React.useState<any>(null);
+  const [viewLoading, setViewLoading] = React.useState(false);
+  const [viewError, setViewError] = React.useState<string | null>(null);
+
+  const handleView = (id: number | string) => {
+    setViewId(id);
+    setOpenView(true);
+  };
+  React.useEffect(() => {
+    let active = true;
+    if (!openView || viewId == null) return;
+    setViewLoading(true); setViewError(null); setViewData(null);
+    (async () => {
+      try {
+        const { data } = await api.get(`/v1/empleados/${viewId}/`);
+        if (active) setViewData(data);
+      } catch (e: any) {
+        if (active) setViewError(String(e?.message ?? e));
+      } finally {
+        if (active) setViewLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [openView, viewId]);
+
+  const closeViewModal = () => {
+    setOpenView(false);
+    setViewId(null);
+    setViewData(null);
+    setViewError(null);
+  };
+
+  /* ===== Catálogos para traducir IDs -> nombres (para el modal Ver) ===== */
+  const { data: puestosResp } = useQuery({
+    queryKey: ["puestos", "map"],
+    queryFn: async () => (await api.get("/v1/puestos?per_page=1000")).data,
+  });
+  const { data: dptosResp } = useQuery({
+    queryKey: ["departamentos", "map"],
+    queryFn: async () => (await api.get("/v1/departamentos?per_page=1000")).data,
+  });
+  const puestoMap = React.useMemo(() => toMap(getList(puestosResp)), [puestosResp]);
+  const dptoMap   = React.useMemo(() => toMap(getList(dptosResp)),   [dptosResp]);
+
+  // Etiquetas ya resueltas para el modal (si trae objeto usa .nombre; si no, mapea ID)
+  const puestoLabel = viewData?.puesto?.nombre
+    ?? puestoMap[String(viewData?.puesto_id ?? viewData?.puesto)]
+    ?? "—";
+  const dptoLabel = viewData?.departamento?.nombre
+    ?? dptoMap[String(viewData?.departamento_id ?? viewData?.departamento)]
+    ?? "—";
+
+  /* Responsive modal */
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
 
   return (
     <>
-      <Paper sx={{ p: 2 }}>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center" justifyContent="space-between">
           <Typography variant="h6" fontWeight={700}>Empleados</Typography>
           <Stack direction="row" spacing={1} alignItems="center">
-            <TextField size="small" placeholder="Buscar" value={search} onChange={(e)=>setSearch(e.target.value)} />
+            <TextField size="small" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
             <Button variant="contained" onClick={openCreateModal}>Nuevo</Button>
           </Stack>
         </Stack>
-        {error && <Typography color="error" sx={{ mb: 1 }}>Error cargando empleados</Typography>}
-        <Box sx={{ height: 600 }}>
-          <DataGrid
-            rows={data?.rows ?? []}
-            columns={columns}
-            loading={isLoading}
-            getRowId={(r) => r.id}
-            pageSizeOptions={[10, 25, 50]}
-            initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-          />
-        </Box>
       </Paper>
 
-      {/* ===== Modal Crear ===== */}
+      <EmpleadosTable
+        search={search}
+        pageSize={25}
+        onView={(id) => handleView(id)}
+        onEdit={(id) => nav(`/empleados/${id}/editar`)}
+        onDelete={(id) => handleDelete(id)}
+      />
+
+      {/* ===== Modal Ver ===== */}
       <Dialog
-        open={openCreate}
-        onClose={closeCreateModal}
+        open={openView}
+        onClose={closeViewModal}
         fullWidth
-        maxWidth="xl"
+        maxWidth="md"
         fullScreen={fullScreen}
-        PaperProps={{ sx: { width: { xs: "100vw", md: "90vw", lg: "85vw" } } }}
       >
+        <DialogTitle>
+          {viewLoading ? "Cargando…" : viewData ? `Empleado: ${toTitle(viewData.nombres ?? "")} ${toTitle(viewData.apellido_paterno ?? "")}` : "Empleado"}
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: { xs: 1, sm: 2 } }}>
+          {viewLoading && <Box sx={{ display: "grid", placeItems: "center", height: 160 }}>Cargando…</Box>}
+          {!viewLoading && viewError && <Typography color="error">{viewError}</Typography>}
+          {!viewLoading && viewData && (
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">No. Empleado</Typography>
+                <Typography variant="body1">{viewData.num_empleado ?? "—"}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Activo</Typography>
+                <Chip
+                  label={(viewData.activo ? "Activo" : "Inactivo")}
+                  color={viewData.activo ? "success" : "default"}
+                  size="small"
+                  variant={viewData.activo ? "filled" : "outlined"}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Nombres</Typography>
+                <Typography variant="body1">{toTitle(viewData.nombres ?? viewData.nombre ?? "")}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Apellidos</Typography>
+                <Typography variant="body1">{toTitle(`${viewData.apellido_paterno ?? ""} ${viewData.apellido_materno ?? ""}`.trim())}</Typography>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Puesto</Typography>
+                <Typography variant="body1">{puestoLabel}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Departamento</Typography>
+                <Typography variant="body1">{dptoLabel}</Typography>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Ingreso</Typography>
+                <Typography variant="body1">{fmtDate(viewData.fecha_ingreso ?? viewData.ingreso)}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Email</Typography>
+                <Typography variant="body1">{viewData.email ?? "—"}</Typography>
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {viewData && (
+            <Button
+              startIcon={<EditIcon />}
+              onClick={() => {
+                closeViewModal();
+                nav(`/empleados/${viewData.id}/editar`);
+              }}
+            >
+              Editar
+            </Button>
+          )}
+          <Button startIcon={<Close />} onClick={closeViewModal}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ===== Modal Crear ===== */}
+      <Dialog open={openCreate} onClose={closeCreateModal} fullWidth maxWidth="xl" fullScreen={fullScreen}
+        PaperProps={{ sx: { width: { xs: "100vw", md: "90vw", lg: "85vw" } } }}>
         <DialogTitle>Nuevo empleado</DialogTitle>
         <DialogContent dividers sx={{ p: { xs: 1, sm: 2 } }}>
-          <EmpleadoForm
-            onSubmit={handleCreate}
-            loading={savingCreate}
-            error={createError}
-            submitLabel="Crear"
-            wrapInPaper={false}
-          />
+          <EmpleadoForm onSubmit={handleCreate} loading={savingCreate} error={createError} submitLabel="Crear" wrapInPaper={false} />
         </DialogContent>
         <DialogActions>
           <Button startIcon={<Close />} onClick={closeCreateModal}>Cerrar</Button>
@@ -283,23 +290,12 @@ const EmpleadosPage: React.FC = () => {
       </Dialog>
 
       {/* ===== Modal Editar ===== */}
-      <Dialog
-        open={openEdit}
-        onClose={closeEditModal}
-        fullWidth
-        maxWidth="xl"
-        fullScreen={fullScreen}
-        PaperProps={{ sx: { width: { xs: "100vw", md: "90vw", lg: "85vw" } } }}
-      >
+      <Dialog open={openEdit} onClose={closeEditModal} fullWidth maxWidth="xl" fullScreen={fullScreen}
+        PaperProps={{ sx: { width: { xs: "100vw", md: "90vw", lg: "85vw" } } }}>
         <DialogTitle>
-          {editLoading ? "Cargando" : editData ? `Editar: ${editData.nombres} ${editData.apellido_paterno ?? ""}` : "Editar empleado"}
+          {editLoading ? "Cargando" : editData ? `Editar: ${toTitle(editData.nombres ?? "")} ${toTitle(editData.apellido_paterno ?? "")}` : "Editar empleado"}
         </DialogTitle>
         <DialogContent dividers sx={{ p: { xs: 1, sm: 2 }, minHeight: 200 }}>
-          {editLoading && (
-            <Box sx={{ display:"grid", placeItems:"center", height: 200 }}>
-              <CircularProgress />
-            </Box>
-          )}
           {!editLoading && editData && (
             <EmpleadoForm
               defaultValues={editData}
@@ -310,9 +306,8 @@ const EmpleadosPage: React.FC = () => {
               wrapInPaper={false}
             />
           )}
-          {!editLoading && !editData && editError && (
-            <Typography color="error">{editError}</Typography>
-          )}
+          {!editLoading && !editData && saveEditError && <Typography color="error">{saveEditError}</Typography>}
+          {editLoading && <Box sx={{ display: "grid", placeItems: "center", height: 200 }}>Cargando…</Box>}
         </DialogContent>
         <DialogActions>
           <Button startIcon={<Close />} onClick={closeEditModal}>Cerrar</Button>
@@ -320,7 +315,4 @@ const EmpleadosPage: React.FC = () => {
       </Dialog>
     </>
   );
-};
-
-export default EmpleadosPage;
-
+}
