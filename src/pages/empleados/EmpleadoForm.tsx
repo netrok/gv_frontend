@@ -1,3 +1,4 @@
+// src/pages/empleados/EmpleadoForm.tsx
 import React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -98,13 +99,13 @@ export default function EmpleadoForm({
       },
     });
 
-  // ====== Autofocus primer error
+  // Autofocus primer error
   React.useEffect(() => {
     const first = Object.keys(errors)[0] as keyof EmpleadoFormInputs | undefined;
     if (first) setFocus(first as any);
   }, [errors, setFocus]);
 
-  // ====== Draft autosave/restore
+  // Draft autosave/restore
   const persistKey = React.useMemo(() => {
     const id = (defaultValues as any)?.id;
     return id ? `empleado:edit:${id}` : "empleado:create";
@@ -133,7 +134,7 @@ export default function EmpleadoForm({
     return () => { sub.unsubscribe(); clearTimeout(t); };
   }, [watch, persistKey]);
 
-  // ===== Navegación de pasos
+  // Navegación de pasos
   const [step, setStep] = React.useState(0);
   const STEPS_META = [
     { label: "Alta express", icon: <Person fontSize="small" /> },
@@ -164,8 +165,8 @@ export default function EmpleadoForm({
   }
   function prevStep() { if (step > 0) setStep(step - 1); }
 
-  // ===== Render de pasos
-  const activo = (watch("activo") as boolean | undefined) ?? true; // siempre boolean
+  // Render de pasos
+  const activo = (watch("activo") as boolean | undefined) ?? true;
   const vals = getValues();
 
   const steps = [
@@ -179,7 +180,6 @@ export default function EmpleadoForm({
       departamentos={departamentos}
       puestos={puestos}
     />,
-    // 👇 QUITAMOS 'control' porque StepIdPersonal ya no lo usa
     <StepIdPersonal key="id" register={register} errors={errors} />,
     <StepAddress key="dir" register={register} />,
     <StepLabor key="lab" register={register} />,
@@ -195,8 +195,8 @@ export default function EmpleadoForm({
             <Typography fontWeight={700} gutterBottom>Alta express</Typography>
             <InfoLine k="No. empleado" v={vals.num_empleado} />
             <InfoLine k="Nombre" v={`${vals.nombres} ${vals.apellido_paterno} ${vals.apellido_materno ?? ""}`} />
-            <InfoLine k="Departamento" v={departamentos.find(d => d.id === Number(vals.departamento))?.nombre ?? vals.departamento} />
-            <InfoLine k="Puesto" v={puestos.find(p => p.id === Number(vals.puesto))?.nombre ?? vals.puesto} />
+            <InfoLine k="Departamento" v={departamentos.find((d: any) => d.id === Number(vals.departamento))?.nombre ?? vals.departamento} />
+            <InfoLine k="Puesto" v={puestos.find((p: any) => p.id === Number(vals.puesto))?.nombre ?? vals.puesto} />
             <InfoLine k="Ingreso" v={vals.fecha_ingreso} />
             <InfoLine k="Email" v={vals.email} />
             <InfoLine k="Estado" v={vals.activo ? "Activo" : "Inactivo"} />
@@ -251,7 +251,6 @@ export default function EmpleadoForm({
     </Stack>,
   ];
 
-  // Submit (el resolver ya coerciona a output válido)
   const submit: SubmitHandler<EmpleadoFormInputs> = (values) =>
     onSubmit(values as unknown as EmpleadoFormValues);
 
