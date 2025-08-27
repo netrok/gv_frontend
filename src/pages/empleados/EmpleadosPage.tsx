@@ -1,10 +1,10 @@
-// src/pages/empleados/EmpleadosPage.tsx
 import React from "react";
 import {
   Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
   Paper, Stack, TextField, Typography, useMediaQuery, useTheme, Chip, Grid
 } from "@mui/material";
 import { Close, Edit as EditIcon } from "@mui/icons-material";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../../lib/api";
@@ -23,7 +23,7 @@ const toTitle = (s?: string) =>
 const fmtDate = (iso?: string) =>
   iso ? new Date(iso).toLocaleDateString("es-MX", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
 
-/* helpers para catálogos */
+/* helpers para catálogos + export */
 const getList = (resp: any) =>
   Array.isArray(resp) ? resp
   : Array.isArray(resp?.data) ? resp.data
@@ -31,6 +31,16 @@ const getList = (resp: any) =>
   : [];
 const toMap = (arr: any[], key = "id", label = "nombre") =>
   Object.fromEntries(arr.map((x) => [String(x?.[key]), x?.[label] ?? "—"]));
+const csvEscape = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+const downloadFile = (name: string, blob: Blob) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
+  a.remove();
+};
 
 export default function EmpleadosPage() {
   const [search, setSearch] = React.useState("");
@@ -140,7 +150,10 @@ export default function EmpleadosPage() {
     setViewLoading(true); setViewError(null); setViewData(null);
     (async () => {
       try {
-        const { data } = await api.get(`/v1/empleados/${viewId}/`);
+        // intentamos expandir relaciones si el backend lo soporta
+        const { data } = await api.get(`/v1/empleados/${viewId}/`, {
+          params: { expand: "puesto,departamento" },
+        });
         if (active) setViewData(data);
       } catch (e: any) {
         if (active) setViewError(String(e?.message ?? e));
@@ -158,7 +171,7 @@ export default function EmpleadosPage() {
     setViewError(null);
   };
 
-  /* ===== Catálogos para traducir IDs -> nombres (para el modal Ver) ===== */
+  /* ===== Catálogos para traducir IDs -> nombres (para el modal Ver y export) ===== */
   const { data: puestosResp } = useQuery({
     queryKey: ["puestos", "map"],
     queryFn: async () => (await api.get("/v1/puestos?per_page=1000")).data,
@@ -170,13 +183,53 @@ export default function EmpleadosPage() {
   const puestoMap = React.useMemo(() => toMap(getList(puestosResp)), [puestosResp]);
   const dptoMap   = React.useMemo(() => toMap(getList(dptosResp)),   [dptosResp]);
 
-  // Etiquetas ya resueltas para el modal (si trae objeto usa .nombre; si no, mapea ID)
+  // Etiquetas resueltas para el modal
   const puestoLabel = viewData?.puesto?.nombre
     ?? puestoMap[String(viewData?.puesto_id ?? viewData?.puesto)]
     ?? "—";
   const dptoLabel = viewData?.departamento?.nombre
     ?? dptoMap[String(viewData?.departamento_id ?? viewData?.departamento)]
     ?? "—";
+
+  /* ===== Exportar CSV ===== */
+  const handleExportCsv = async () => {
+    try {
+      const params: Record<string, any> = { per_page: 1000 };
+      if (search) params.search = search;
+      const { data } = await api.get("/v1/empleados/", { params });
+      const list = getList(data);
+
+      const header = [
+        "ID","No.","Nombres","Apellido Paterno","Apellido Materno",
+        "Puesto","Departamento","Ingreso","Activo","Email"
+      ];
+      const lines = list.map((r: any) => {
+        const puesto = r?.puesto?.nombre ?? puestoMap[String(r?.puesto_id ?? r?.puesto)] ?? "";
+        const dpto   = r?.departamento?.nombre ?? dptoMap[String(r?.departamento_id ?? r?.departamento)] ?? "";
+        const fecha  = fmtDate(r?.fecha_ingreso ?? r?.ingreso);
+        const activo = r?.activo ? "Activo" : "Inactivo";
+        return [
+          r?.id ?? "",
+          r?.num_empleado ?? "",
+          toTitle(r?.nombres ?? r?.nombre ?? ""),
+          toTitle(r?.apellido_paterno ?? ""),
+          toTitle(r?.apellido_materno ?? ""),
+          puesto,
+          dpto,
+          fecha,
+          activo,
+          r?.email ?? "",
+        ].map(csvEscape).join(",");
+      });
+      const csv = [header.map(csvEscape).join(","), ...lines].join("\r\n");
+      // BOM para Excel
+      const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+      downloadFile(`empleados_${new Date().toISOString().slice(0,10)}.csv`, blob);
+      showToast("CSV exportado", "success");
+    } catch {
+      showToast("Error al exportar", "error");
+    }
+  };
 
   /* Responsive modal */
   const theme = useTheme();
@@ -189,6 +242,9 @@ export default function EmpleadosPage() {
           <Typography variant="h6" fontWeight={700}>Empleados</Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField size="small" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Button startIcon={<FileDownloadIcon />} variant="outlined" onClick={handleExportCsv}>
+              Exportar CSV
+            </Button>
             <Button variant="contained" onClick={openCreateModal}>Nuevo</Button>
           </Stack>
         </Stack>
