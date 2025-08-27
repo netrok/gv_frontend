@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import EmpleadoForm from "./EmpleadoForm";
-import type { EmpleadoFormValues } from "./EmpleadoForm";
+import type { EmpleadoFormValues } from "./form/schema";
 import api from "../../lib/api";
 
 export default function EmpleadoCreatePage(){
