@@ -1,46 +1,19 @@
 import React from "react";
-import {
-  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  Paper, Stack, TextField, Typography, useMediaQuery, useTheme, Chip, Grid
-} from "@mui/material";
-import { Close, Edit as EditIcon } from "@mui/icons-material";
-import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import { Box, Paper, Stack, Typography, useMediaQuery, useTheme, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
+import { Close } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "../../lib/api";
 import { useToast } from "../../state/ToastContext";
 import EmpleadosTable from "./EmpleadosTable";
 import EmpleadoForm from "./EmpleadoForm";
 import type { EmpleadoFormValues } from "./EmpleadoForm";
 
-/* helpers locales */
-const toTitle = (s?: string) =>
-  (s ?? "")
-    .toLowerCase()
-    .replace(/\b([a-záéíóúñü]+)\b/gi, (w) =>
-      /^(de|del|la|las|los|y|o)$/.test(w) ? w : w[0].toUpperCase() + w.slice(1)
-    );
-const fmtDate = (iso?: string) =>
-  iso ? new Date(iso).toLocaleDateString("es-MX", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
-
-/* helpers para catálogos + export */
-const getList = (resp: any) =>
-  Array.isArray(resp) ? resp
-  : Array.isArray(resp?.data) ? resp.data
-  : Array.isArray(resp?.results) ? resp.results
-  : [];
-const toMap = (arr: any[], key = "id", label = "nombre") =>
-  Object.fromEntries(arr.map((x) => [String(x?.[key]), x?.[label] ?? "—"]));
-const csvEscape = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-const downloadFile = (name: string, blob: Blob) => {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  URL.revokeObjectURL(url);
-  a.remove();
-};
+import EmpleadosToolbar from "../../features/empleados/components/EmpleadosToolbar";
+import EmpleadoViewDialog from "../../features/empleados/components/EmpleadoViewDialog";
+import { useCatalogos } from "../../features/empleados/hooks/useCatalogos";
+import { exportEmpleadosCsv } from "../../features/empleados/export/csv";
+import { exportEmpleadosPdf } from "../../features/empleados/export/pdf";
 
 export default function EmpleadosPage() {
   const [search, setSearch] = React.useState("");
@@ -49,13 +22,14 @@ export default function EmpleadosPage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
 
+  const { puestoMap, dptoMap } = useCatalogos();
+
   /* ===== Crear ===== */
   const isCreateRoute = location.pathname.endsWith("/empleados/nuevo");
   const [openCreate, setOpenCreate] = React.useState(isCreateRoute);
   React.useEffect(() => { setOpenCreate(isCreateRoute); }, [isCreateRoute]);
   const openCreateModal = () => nav("/empleados/nuevo");
   const closeCreateModal = () => nav("/empleados");
-
   const [savingCreate, setSavingCreate] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const handleCreate = async (values: EmpleadoFormValues) => {
@@ -81,12 +55,10 @@ export default function EmpleadosPage() {
   const [openEdit, setOpenEdit] = React.useState(isEditRoute);
   React.useEffect(() => { setOpenEdit(isEditRoute); }, [isEditRoute]);
   const closeEditModal = () => nav("/empleados");
-
   const [savingEdit, setSavingEdit] = React.useState(false);
   const [saveEditError, setSaveEditError] = React.useState<string | null>(null);
   const [editData, setEditData] = React.useState<any>(null);
   const [editLoading, setEditLoading] = React.useState(false);
-
   React.useEffect(() => {
     let active = true;
     if (!isEditRoute) return;
@@ -103,7 +75,6 @@ export default function EmpleadosPage() {
     })();
     return () => { active = false; };
   }, [isEditRoute, editId]);
-
   const handleUpdate = async (values: EmpleadoFormValues) => {
     if (!editId) return;
     setSavingEdit(true); setSaveEditError(null);
@@ -133,101 +104,27 @@ export default function EmpleadosPage() {
     }
   };
 
-  /* ===== Ver (MODAL) ===== */
+  /* ===== Ver ===== */
   const [openView, setOpenView] = React.useState(false);
   const [viewId, setViewId] = React.useState<number | string | null>(null);
-  const [viewData, setViewData] = React.useState<any>(null);
-  const [viewLoading, setViewLoading] = React.useState(false);
-  const [viewError, setViewError] = React.useState<string | null>(null);
+  const handleView = (id: number | string) => { setViewId(id); setOpenView(true); };
+  const closeViewModal = () => { setOpenView(false); setViewId(null); };
 
-  const handleView = (id: number | string) => {
-    setViewId(id);
-    setOpenView(true);
-  };
-  React.useEffect(() => {
-    let active = true;
-    if (!openView || viewId == null) return;
-    setViewLoading(true); setViewError(null); setViewData(null);
-    (async () => {
-      try {
-        // intentamos expandir relaciones si el backend lo soporta
-        const { data } = await api.get(`/v1/empleados/${viewId}/`, {
-          params: { expand: "puesto,departamento" },
-        });
-        if (active) setViewData(data);
-      } catch (e: any) {
-        if (active) setViewError(String(e?.message ?? e));
-      } finally {
-        if (active) setViewLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [openView, viewId]);
-
-  const closeViewModal = () => {
-    setOpenView(false);
-    setViewId(null);
-    setViewData(null);
-    setViewError(null);
-  };
-
-  /* ===== Catálogos para traducir IDs -> nombres (para el modal Ver y export) ===== */
-  const { data: puestosResp } = useQuery({
-    queryKey: ["puestos", "map"],
-    queryFn: async () => (await api.get("/v1/puestos?per_page=1000")).data,
-  });
-  const { data: dptosResp } = useQuery({
-    queryKey: ["departamentos", "map"],
-    queryFn: async () => (await api.get("/v1/departamentos?per_page=1000")).data,
-  });
-  const puestoMap = React.useMemo(() => toMap(getList(puestosResp)), [puestosResp]);
-  const dptoMap   = React.useMemo(() => toMap(getList(dptosResp)),   [dptosResp]);
-
-  // Etiquetas resueltas para el modal
-  const puestoLabel = viewData?.puesto?.nombre
-    ?? puestoMap[String(viewData?.puesto_id ?? viewData?.puesto)]
-    ?? "—";
-  const dptoLabel = viewData?.departamento?.nombre
-    ?? dptoMap[String(viewData?.departamento_id ?? viewData?.departamento)]
-    ?? "—";
-
-  /* ===== Exportar CSV ===== */
+  /* ===== Export ===== */
   const handleExportCsv = async () => {
     try {
-      const params: Record<string, any> = { per_page: 1000 };
-      if (search) params.search = search;
-      const { data } = await api.get("/v1/empleados/", { params });
-      const list = getList(data);
-
-      const header = [
-        "ID","No.","Nombres","Apellido Paterno","Apellido Materno",
-        "Puesto","Departamento","Ingreso","Activo","Email"
-      ];
-      const lines = list.map((r: any) => {
-        const puesto = r?.puesto?.nombre ?? puestoMap[String(r?.puesto_id ?? r?.puesto)] ?? "";
-        const dpto   = r?.departamento?.nombre ?? dptoMap[String(r?.departamento_id ?? r?.departamento)] ?? "";
-        const fecha  = fmtDate(r?.fecha_ingreso ?? r?.ingreso);
-        const activo = r?.activo ? "Activo" : "Inactivo";
-        return [
-          r?.id ?? "",
-          r?.num_empleado ?? "",
-          toTitle(r?.nombres ?? r?.nombre ?? ""),
-          toTitle(r?.apellido_paterno ?? ""),
-          toTitle(r?.apellido_materno ?? ""),
-          puesto,
-          dpto,
-          fecha,
-          activo,
-          r?.email ?? "",
-        ].map(csvEscape).join(",");
-      });
-      const csv = [header.map(csvEscape).join(","), ...lines].join("\r\n");
-      // BOM para Excel
-      const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
-      downloadFile(`empleados_${new Date().toISOString().slice(0,10)}.csv`, blob);
+      await exportEmpleadosCsv(search, puestoMap, dptoMap);
       showToast("CSV exportado", "success");
     } catch {
       showToast("Error al exportar", "error");
+    }
+  };
+  const handleExportPdf = async () => {
+    try {
+      await exportEmpleadosPdf(search, puestoMap, dptoMap);
+      showToast("PDF exportado", "success");
+    } catch {
+      showToast("Error al exportar PDF", "error");
     }
   };
 
@@ -240,13 +137,13 @@ export default function EmpleadosPage() {
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center" justifyContent="space-between">
           <Typography variant="h6" fontWeight={700}>Empleados</Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <TextField size="small" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <Button startIcon={<FileDownloadIcon />} variant="outlined" onClick={handleExportCsv}>
-              Exportar CSV
-            </Button>
-            <Button variant="contained" onClick={openCreateModal}>Nuevo</Button>
-          </Stack>
+          <EmpleadosToolbar
+            search={search}
+            onSearchChange={setSearch}
+            onExportCsv={handleExportCsv}
+            onExportPdf={handleExportPdf}
+            onNew={openCreateModal}
+          />
         </Stack>
       </Paper>
 
@@ -258,82 +155,17 @@ export default function EmpleadosPage() {
         onDelete={(id) => handleDelete(id)}
       />
 
-      {/* ===== Modal Ver ===== */}
-      <Dialog
+      {/* Ver */}
+      <EmpleadoViewDialog
         open={openView}
+        empleadoId={viewId}
         onClose={closeViewModal}
-        fullWidth
-        maxWidth="md"
-        fullScreen={fullScreen}
-      >
-        <DialogTitle>
-          {viewLoading ? "Cargando…" : viewData ? `Empleado: ${toTitle(viewData.nombres ?? "")} ${toTitle(viewData.apellido_paterno ?? "")}` : "Empleado"}
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: { xs: 1, sm: 2 } }}>
-          {viewLoading && <Box sx={{ display: "grid", placeItems: "center", height: 160 }}>Cargando…</Box>}
-          {!viewLoading && viewError && <Typography color="error">{viewError}</Typography>}
-          {!viewLoading && viewData && (
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">No. Empleado</Typography>
-                <Typography variant="body1">{viewData.num_empleado ?? "—"}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Activo</Typography>
-                <Chip
-                  label={(viewData.activo ? "Activo" : "Inactivo")}
-                  color={viewData.activo ? "success" : "default"}
-                  size="small"
-                  variant={viewData.activo ? "filled" : "outlined"}
-                />
-              </Grid>
+        onEdit={(id) => nav(`/empleados/${id}/editar`)}
+        puestoMap={puestoMap}
+        dptoMap={dptoMap}
+      />
 
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Nombres</Typography>
-                <Typography variant="body1">{toTitle(viewData.nombres ?? viewData.nombre ?? "")}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Apellidos</Typography>
-                <Typography variant="body1">{toTitle(`${viewData.apellido_paterno ?? ""} ${viewData.apellido_materno ?? ""}`.trim())}</Typography>
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Puesto</Typography>
-                <Typography variant="body1">{puestoLabel}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Departamento</Typography>
-                <Typography variant="body1">{dptoLabel}</Typography>
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Ingreso</Typography>
-                <Typography variant="body1">{fmtDate(viewData.fecha_ingreso ?? viewData.ingreso)}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Email</Typography>
-                <Typography variant="body1">{viewData.email ?? "—"}</Typography>
-              </Grid>
-            </Grid>
-          )}
-        </DialogContent>
-        <DialogActions>
-          {viewData && (
-            <Button
-              startIcon={<EditIcon />}
-              onClick={() => {
-                closeViewModal();
-                nav(`/empleados/${viewData.id}/editar`);
-              }}
-            >
-              Editar
-            </Button>
-          )}
-          <Button startIcon={<Close />} onClick={closeViewModal}>Cerrar</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ===== Modal Crear ===== */}
+      {/* Crear */}
       <Dialog open={openCreate} onClose={closeCreateModal} fullWidth maxWidth="xl" fullScreen={fullScreen}
         PaperProps={{ sx: { width: { xs: "100vw", md: "90vw", lg: "85vw" } } }}>
         <DialogTitle>Nuevo empleado</DialogTitle>
@@ -345,11 +177,11 @@ export default function EmpleadosPage() {
         </DialogActions>
       </Dialog>
 
-      {/* ===== Modal Editar ===== */}
+      {/* Editar */}
       <Dialog open={openEdit} onClose={closeEditModal} fullWidth maxWidth="xl" fullScreen={fullScreen}
         PaperProps={{ sx: { width: { xs: "100vw", md: "90vw", lg: "85vw" } } }}>
         <DialogTitle>
-          {editLoading ? "Cargando" : editData ? `Editar: ${toTitle(editData.nombres ?? "")} ${toTitle(editData.apellido_paterno ?? "")}` : "Editar empleado"}
+          {editLoading ? "Cargando" : editData ? `Editar: ${editData.nombres ?? ""} ${editData.apellido_paterno ?? ""}` : "Editar empleado"}
         </DialogTitle>
         <DialogContent dividers sx={{ p: { xs: 1, sm: 2 }, minHeight: 200 }}>
           {!editLoading && editData && (
@@ -362,7 +194,7 @@ export default function EmpleadosPage() {
               wrapInPaper={false}
             />
           )}
-          {!editLoading && !editData && saveEditError && <Typography color="error">{saveEditError}</Typography>}
+          {!editLoading && !editData && saveEditError && <Box color="error.main">{saveEditError}</Box>}
           {editLoading && <Box sx={{ display: "grid", placeItems: "center", height: 200 }}>Cargando…</Box>}
         </DialogContent>
         <DialogActions>
