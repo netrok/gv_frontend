@@ -17,9 +17,6 @@ const toTitle = (s?: string) =>
       /^(de|del|la|las|los|y|o)$/.test(w) ? w : w[0].toUpperCase() + w.slice(1)
     );
 
-const fmtDate = (iso?: string) =>
-  iso ? new Date(iso).toLocaleDateString("es-MX", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
-
 const getList = (resp: any) =>
   Array.isArray(resp) ? resp
   : Array.isArray(resp?.data) ? resp.data
@@ -90,9 +87,8 @@ const EmpleadosTable: React.FC<EmpleadosTableProps> = ({
 
   const rows = React.useMemo(() => getList(empleadosResp), [empleadosResp]);
 
-  // v6: valueGetter(value, row, column, apiRef)
+  // SIN columnas "ID" ni "Ingreso"
   const cols = React.useMemo<GridColDef[]>(() => [
-    { field: "id", headerName: "ID", width: 80 },
     { field: "num_empleado", headerName: "No.", width: 110 },
 
     {
@@ -138,13 +134,6 @@ const EmpleadosTable: React.FC<EmpleadosTableProps> = ({
         const id = pick(row, ["departamento_id", "departamentoId", "id_departamento", "departamento"], null);
         return id != null ? (dptoMap[String(id)] ?? String(id)) : "—";
       },
-    },
-    {
-      field: "fecha_ingreso",
-      headerName: "Ingreso",
-      width: 120,
-      valueGetter: (_: any, row: any) =>
-        fmtDate(String(pick(row, ["fecha_ingreso", "ingreso", "fechaAlta"], ""))),
     },
     {
       field: "activo",
