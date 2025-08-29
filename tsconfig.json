@@ -1,18 +1,14 @@
 ﻿{
-    "files":  [
-
-              ],
-    "references":  [
-                       {
-                           "path":  "./tsconfig.app.json"
-                       },
-                       {
-                           "path":  "./tsconfig.node.json"
-                       }
-                   ],
-    "exclude":  [
-                    "node_modules",
-                    "dist",
-                    "src/pages/pages/**"
-                ]
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "exclude": ["node_modules", "dist", "src/pages/pages/**"],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  }
 }

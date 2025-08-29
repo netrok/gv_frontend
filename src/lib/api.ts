@@ -1,6 +1,5 @@
 // src/lib/api.ts
-import axios from "axios";
-import type { AxiosError, AxiosResponse } from "axios"; // <- type-only import ✅
+import axios, { AxiosError, type AxiosHeaders, type AxiosResponse } from "axios";
 import {
   deepFixMojibake,
   tryFixUtf8,
@@ -9,22 +8,25 @@ import {
 } from "./utf8";
 
 /** VITE_API_URL debe terminar en /api (ej. http://localhost:8000/api) */
-const baseURL =
-  import.meta.env.VITE_API_URL?.toString() || "http://localhost:8000/api";
+const baseURL = (import.meta as any).env?.VITE_API_URL?.toString() || "http://localhost:8000/api";
+
+const defaultHeaders: AxiosHeaders = new (axios.AxiosHeaders as any)({
+  Accept: "application/json, text/plain, */*",
+  "Accept-Charset": "utf-8",
+});
 
 const api = axios.create({
   baseURL,
   withCredentials: false,
   timeout: 15000,
-  headers: {
-    Accept: "application/json, text/plain, */*",
-    "Accept-Charset": "utf-8",
-  },
+  headers: defaultHeaders,
 });
 
 api.interceptors.request.use((config) => {
   const access = localStorage.getItem("access_token");
-  if (access) config.headers.Authorization = `Bearer ${access}`;
+  if (access) {
+    (config.headers as AxiosHeaders).set("Authorization", `Bearer ${access}`);
+  }
   return config;
 });
 
@@ -75,7 +77,7 @@ api.interceptors.response.use(
           d = latin1StringToUtf8(d);
           if (looksMojibake(d)) d = latin1StringToUtf8(d);
         }
-        error.response!.data =
+        (error.response as any).data =
           isLikelyJson(ct) || looksLikeJsonText(d)
             ? (() => {
                 try { return deepFixMojibake(JSON.parse(d)); }
@@ -83,7 +85,7 @@ api.interceptors.response.use(
               })()
             : tryFixUtf8(d);
       } else if (d && typeof d === "object") {
-        error.response!.data = deepFixMojibake(d);
+        (error.response as any).data = deepFixMojibake(d);
       }
     } catch { /* ignore */ }
     return Promise.reject(error);

@@ -1,12 +1,12 @@
 // src/pages/empleados/form/StepIdPersonal.tsx
 import { Paper, Stack, Typography, Grid, TextField, InputAdornment, MenuItem } from "@mui/material";
 import { Mail, Phone, PhoneIphone } from "@mui/icons-material";
-import { type UseFormRegister, type FieldErrors } from "react-hook-form";
-import type { EmpleadoFormInputs } from "./schema";
+import type { UseFormRegister, FieldErrors } from "react-hook-form";
+import type { EmpleadoFormInputs } from "@/features/empleados/utils/schema";
 
 type Props = {
   register: UseFormRegister<EmpleadoFormInputs>;
-  errors: FieldErrors<EmpleadoFormInputs>;
+  errors?: FieldErrors<EmpleadoFormInputs>;
 };
 
 const onlyDigits = (s: string) => s.replace(/\D+/g, "");
@@ -18,6 +18,7 @@ const GENEROS = [
   { value: "F", label: "Femenino" },
   { value: "O", label: "Otro" },
 ];
+
 const ESTADOS_CIVIL = [
   { value: "", label: "—" },
   { value: "soltero", label: "Soltero(a)" },
@@ -38,29 +39,37 @@ export default function StepIdPersonal({ register, errors }: Props) {
               fullWidth
               label="RFC"
               {...register("rfc", {
-                onChange: (e) => { e.target.value = upperAN(e.target.value).slice(0, 13); },
+                setValueAs: (v) => (v == null || v === "" ? v : upperAN(String(v)).slice(0, 13)),
               })}
               inputProps={{ maxLength: 13 }}
+              error={!!errors?.rfc}
+              helperText={errors?.rfc?.message as any}
             />
           </Grid>
+
           <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               label="CURP"
               {...register("curp", {
-                onChange: (e) => { e.target.value = upperAN(e.target.value).slice(0, 18); },
+                setValueAs: (v) => (v == null || v === "" ? v : upperAN(String(v)).slice(0, 18)),
               })}
               inputProps={{ maxLength: 18 }}
+              error={!!errors?.curp}
+              helperText={errors?.curp?.message as any}
             />
           </Grid>
+
           <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               label="NSS"
               {...register("nss", {
-                onChange: (e) => { e.target.value = onlyDigits(e.target.value).slice(0, 11); },
+                setValueAs: (v) => (v == null || v === "" ? v : onlyDigits(String(v)).slice(0, 11)),
               })}
               inputProps={{ maxLength: 11 }}
+              error={!!errors?.nss}
+              helperText={errors?.nss?.message as any}
             />
           </Grid>
         </Grid>
@@ -74,6 +83,8 @@ export default function StepIdPersonal({ register, errors }: Props) {
               type="date"
               InputLabelProps={{ shrink: true }}
               {...register("fecha_nacimiento")}
+              error={!!errors?.fecha_nacimiento}
+              helperText={errors?.fecha_nacimiento?.message as any}
             />
           </Grid>
 
@@ -84,9 +95,13 @@ export default function StepIdPersonal({ register, errors }: Props) {
               label="Género"
               defaultValue=""
               {...register("genero")}
+              error={!!errors?.genero}
+              helperText={errors?.genero?.message as any}
             >
               {GENEROS.map((g) => (
-                <MenuItem key={g.value} value={g.value}>{g.label}</MenuItem>
+                <MenuItem key={g.value} value={g.value}>
+                  {g.label}
+                </MenuItem>
               ))}
             </TextField>
           </Grid>
@@ -98,9 +113,13 @@ export default function StepIdPersonal({ register, errors }: Props) {
               label="Estado civil"
               defaultValue=""
               {...register("estado_civil")}
+              error={!!errors?.estado_civil}
+              helperText={errors?.estado_civil?.message as any}
             >
               {ESTADOS_CIVIL.map((e) => (
-                <MenuItem key={e.value} value={e.value}>{e.label}</MenuItem>
+                <MenuItem key={e.value} value={e.value}>
+                  {e.label}
+                </MenuItem>
               ))}
             </TextField>
           </Grid>
@@ -110,9 +129,17 @@ export default function StepIdPersonal({ register, errors }: Props) {
               fullWidth
               label="Teléfono"
               {...register("telefono", {
-                onChange: (e) => { e.target.value = onlyDigits(e.target.value).slice(0, 10); },
+                setValueAs: (v) => (v == null || v === "" ? v : onlyDigits(String(v)).slice(0, 10)),
               })}
-              InputProps={{ startAdornment: <InputAdornment position="start"><Phone fontSize="small" /></InputAdornment> }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Phone fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+              error={!!errors?.telefono}
+              helperText={errors?.telefono?.message as any}
             />
           </Grid>
 
@@ -121,9 +148,17 @@ export default function StepIdPersonal({ register, errors }: Props) {
               fullWidth
               label="Celular"
               {...register("celular", {
-                onChange: (e) => { e.target.value = onlyDigits(e.target.value).slice(0, 10); },
+                setValueAs: (v) => (v == null || v === "" ? v : onlyDigits(String(v)).slice(0, 10)),
               })}
-              InputProps={{ startAdornment: <InputAdornment position="start"><PhoneIphone fontSize="small" /></InputAdornment> }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PhoneIphone fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+              error={!!errors?.celular}
+              helperText={errors?.celular?.message as any}
             />
           </Grid>
 
@@ -131,10 +166,17 @@ export default function StepIdPersonal({ register, errors }: Props) {
             <TextField
               fullWidth
               label="Email"
+              type="email"
               {...register("email")}
-              error={!!errors.email}
-              helperText={errors.email?.message}
-              InputProps={{ startAdornment: <InputAdornment position="start"><Mail fontSize="small" /></InputAdornment> }}
+              error={!!errors?.email}
+              helperText={errors?.email?.message as any}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Mail fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
             />
           </Grid>
         </Grid>

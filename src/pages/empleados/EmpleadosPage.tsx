@@ -1,4 +1,5 @@
 // src/pages/empleados/EmpleadosPage.tsx
+import api from "@/lib/api";
 import React from "react";
 import {
   Box,
@@ -16,14 +17,17 @@ import {
 import { Close } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import api from "../../lib/api";
+
+import { toFormData } from "@/features/empleados/utils/toFormData";
+import type {
+  EmpleadoFormInputs,
+  EmpleadoFormValues,
+} from "@/features/empleados/utils/schema";
+
 import { useToast } from "../../state/ToastContext";
 
 import EmpleadosTable from "./EmpleadosTable";
-
-// Formulario (component) y tipo (del schema)
 import EmpleadoForm from "./EmpleadoForm";
-import type { EmpleadoFormValues } from "./form/schema";
 
 // Toolbar
 import EmpleadosToolbar from "../../features/empleados/components/EmpleadosToolbar";
@@ -37,6 +41,8 @@ import { useCatalogos } from "../../features/empleados/hooks/useCatalogos";
 // Exportadores
 import { downloadEmpleadosXlsx } from "../../features/empleados/export/excel";
 import { exportEmpleadosPdf } from "../../features/empleados/export/pdf";
+
+type SubmitShape = EmpleadoFormInputs | EmpleadoFormValues;
 
 export default function EmpleadosPage() {
   const [search, setSearch] = React.useState("");
@@ -62,11 +68,12 @@ export default function EmpleadosPage() {
   const [savingCreate, setSavingCreate] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
 
-  const handleCreate = async (values: EmpleadoFormValues) => {
+  const handleCreate = async (values: SubmitShape) => {
     setSavingCreate(true);
     setCreateError(null);
     try {
-      await api.post("/v1/empleados/", values as any);
+      const fd = toFormData(values);
+      await api.post("/v1/empleados/", fd); // boundary lo pone Axios
       await qc.invalidateQueries({ queryKey: ["empleados"] });
       showToast("Empleado creado", "success");
       closeCreateModal();
@@ -119,12 +126,13 @@ export default function EmpleadosPage() {
     };
   }, [isEditRoute, editId]);
 
-  const handleUpdate = async (values: EmpleadoFormValues) => {
+  const handleUpdate = async (values: SubmitShape) => {
     if (!editId) return;
     setSavingEdit(true);
     setSaveEditError(null);
     try {
-      await api.put(`/v1/empleados/${editId}/`, values as any);
+      const fd = toFormData(values);
+      await api.patch(`/v1/empleados/${editId}/`, fd);
       await qc.invalidateQueries({ queryKey: ["empleados"] });
       showToast("Cambios guardados", "success");
       closeEditModal();
@@ -164,6 +172,8 @@ export default function EmpleadosPage() {
   };
 
   /* ===== Export ===== */
+  const [exportingPdf, setExportingPdf] = React.useState(false);
+
   const handleExportExcel = async () => {
     try {
       setExporting(true);
@@ -179,10 +189,13 @@ export default function EmpleadosPage() {
 
   const handleExportPdf = async () => {
     try {
+      setExportingPdf(true);
       await exportEmpleadosPdf(search, puestoMap, dptoMap);
       showToast("PDF exportado", "success");
     } catch {
       showToast("Error al exportar PDF", "error");
+    } finally {
+      setExportingPdf(false);
     }
   };
 
@@ -208,7 +221,7 @@ export default function EmpleadosPage() {
             onExportXlsx={handleExportExcel}
             onExportPdf={handleExportPdf}
             onNew={openCreateModal}
-            exporting={exporting}
+            exporting={exporting || exportingPdf}
           />
         </Stack>
       </Paper>

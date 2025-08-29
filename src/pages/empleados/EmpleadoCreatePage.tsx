@@ -1,28 +1,40 @@
-import React from "react";
+// src/pages/empleados/EmpleadoCreatePage.tsx
+import * as React from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "@/api";
 import EmpleadoForm from "./EmpleadoForm";
-import type { EmpleadoFormValues } from "./form/schema";
-import api from "../../lib/api";
+import { toFormData } from "@/features/empleados/utils/toFormData";
+import type { EmpleadoFormValues } from "@/features/empleados/utils/schema";
 
-export default function EmpleadoCreatePage(){
-  const nav = useNavigate();
+export default function EmpleadoCreatePage() {
+  const navigate = useNavigate();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const handleSubmit = async (values: EmpleadoFormValues) => {
-    setLoading(true); setError(null);
-    try{
-      const payload = { ...values, departamento: values.departamento, puesto: values.puesto };
-      await api.post("/v1/empleados/", payload);
-      nav("/empleados");
-    }catch(e:any){
-      const msg = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : String(e?.message || e);
+  async function handleSubmit(values: EmpleadoFormValues) {
+    setLoading(true);
+    setError(null);
+    try {
+      const fd = toFormData(values as any);
+      await api.post("/v1/empleados/", fd); // Axios pone el boundary automáticamente
+      try { localStorage.removeItem("empleado:create"); } catch {}
+      navigate("/empleados");
+    } catch (e: any) {
+      const msg = e?.response?.data
+        ? JSON.stringify(e.response.data, null, 2)
+        : String(e?.message || e);
       setError(msg);
-    }finally{
+    } finally {
       setLoading(false);
     }
-  };
+  }
 
-  return <EmpleadoForm onSubmit={handleSubmit} loading={loading} error={error} submitLabel="Crear" />;
+  return (
+    <EmpleadoForm
+      submitLabel="Crear"
+      onSubmit={handleSubmit}
+      loading={loading}
+      error={error}
+    />
+  );
 }
-

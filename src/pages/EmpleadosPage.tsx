@@ -1,60 +1,270 @@
 // src/pages/EmpleadosPage.tsx
-import { useQuery } from "@tanstack/react-query";
-import { DataGrid, type GridColDef } from "@mui/x-data-grid";
-import { Box, Paper, Typography } from "@mui/material";
-import api from "../lib/api";
-import type { Empleado } from "../types";
+import React from "react";
+import {
+  Box, Paper, Stack, Typography, useMediaQuery, useTheme,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button,
+} from "@mui/material";
+import { Close } from "@mui/icons-material";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 
-// Normaliza la respuesta
-const fetchEmpleados = async (): Promise<Empleado[]> => {
-  const { data } = await api.get("/v1/empleados/");
-  if (Array.isArray(data)) return data as Empleado[];
-  if (Array.isArray(data?.results)) return data.results as Empleado[];
-  return [];
-};
+import type { EmpleadoFormInputs, EmpleadoFormValues } from "@/features/empleados/utils/schema";
+import { toFormData } from "@/features/empleados/utils/toFormData";
+import api from "@/lib/api";
 
-// 👉 SIN "id" ni "fecha_ingreso"
-const columns: GridColDef[] = [
-  { field: "num_empleado", headerName: "No.", width: 100 },
-  { field: "nombres", headerName: "Nombres", width: 160 },
-  { field: "apellido_paterno", headerName: "Apellido Paterno", width: 160 },
-  { field: "apellido_materno", headerName: "Apellido Materno", width: 160 },
-  {
-    field: "puesto",
-    headerName: "Puesto",
-    width: 160,
-    valueGetter: (_v, row: any) => row?.puesto?.nombre ?? row?.puesto ?? "",
-  },
-  {
-    field: "departamento",
-    headerName: "Departamento",
-    width: 180,
-    valueGetter: (_v, row: any) => row?.departamento?.nombre ?? row?.departamento ?? "",
-  },
-  { field: "activo", headerName: "Activo", width: 100, type: "boolean" },
-];
+import { useToast } from "@/state/ToastContext";
+
+// ⬇️ RUTAS CORRECTAS (porque esta página está en src/pages/)
+import EmpleadosTable from "./empleados/EmpleadosTable";
+import EmpleadoForm from "./empleados/EmpleadoForm";
+
+import EmpleadosToolbar from "@/features/empleados/components/EmpleadosToolbar";
+import EmpleadoViewDialog from "@/features/empleados/components/EmpleadoViewDialog";
+import { useCatalogos } from "@/features/empleados/hooks/useCatalogos";
+import { downloadEmpleadosXlsx } from "@/features/empleados/export/excel";
+import { exportEmpleadosPdf } from "@/features/empleados/export/pdf";
 
 export default function EmpleadosPage() {
-  const { data = [], isLoading } = useQuery({
-    queryKey: ["empleados"],
-    queryFn: fetchEmpleados,
-  });
+  const [search, setSearch] = React.useState("");
+  const [exporting, setExporting] = React.useState(false);
+
+  const nav = useNavigate();
+  const location = useLocation();
+  const qc = useQueryClient();
+  const { showToast } = useToast();
+
+  const { puestoMap, dptoMap } = useCatalogos();
+
+  /* ===== Crear ===== */
+  const isCreateRoute = location.pathname.endsWith("/empleados/nuevo");
+  const [openCreate, setOpenCreate] = React.useState(isCreateRoute);
+  React.useEffect(() => { setOpenCreate(isCreateRoute); }, [isCreateRoute]);
+
+  const openCreateModal = () => nav("/empleados/nuevo");
+  const closeCreateModal = () => nav("/empleados");
+
+  const [savingCreate, setSavingCreate] = React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+
+  const handleCreate = async (values: EmpleadoFormInputs) => {
+    setSavingCreate(true);
+    setCreateError(null);
+    try {
+      const fd = toFormData(values);
+      await api.post("/v1/empleados/", fd);
+      await qc.invalidateQueries({ queryKey: ["empleados"] });
+      showToast("Empleado creado", "success");
+      closeCreateModal();
+    } catch (e: any) {
+      const msg = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : String(e?.message || e);
+      setCreateError(msg);
+      showToast("Error al crear", "error");
+    } finally {
+      setSavingCreate(false);
+    }
+  };
+
+  /* ===== Editar ===== */
+  const matchEdit = location.pathname.match(/\/empleados\/(\d+)\/editar$/);
+  const editId = matchEdit ? Number(matchEdit[1]) : null;
+  const isEditRoute = editId != null;
+
+  const [openEdit, setOpenEdit] = React.useState(isEditRoute);
+  React.useEffect(() => { setOpenEdit(isEditRoute); }, [isEditRoute]);
+
+  const closeEditModal = () => nav("/empleados");
+
+  const [savingEdit, setSavingEdit] = React.useState(false);
+  const [saveEditError, setSaveEditError] = React.useState<string | null>(null);
+  const [editData, setEditData] = React.useState<EmpleadoFormValues | null>(null);
+  const [editLoading, setEditLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let active = true;
+    if (!isEditRoute) return;
+    setEditLoading(true);
+    setEditData(null);
+    setSaveEditError(null);
+    (async () => {
+      try {
+        const { data } = await api.get(`/v1/empleados/${editId}/`);
+        if (active) setEditData(data as EmpleadoFormValues);
+      } catch (e: any) {
+        if (active) setSaveEditError(String(e?.message ?? e));
+      } finally {
+        if (active) setEditLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [isEditRoute, editId]);
+
+  const handleUpdate = async (values: EmpleadoFormInputs) => {
+    if (!editId) return;
+    setSavingEdit(true);
+    setSaveEditError(null);
+    try {
+      const fd = toFormData(values);
+      await api.put(`/v1/empleados/${editId}/`, fd);
+      await qc.invalidateQueries({ queryKey: ["empleados"] });
+      showToast("Cambios guardados", "success");
+      closeEditModal();
+    } catch (e: any) {
+      const msg = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : String(e?.message || e);
+      setSaveEditError(msg);
+      showToast("Error al guardar", "error");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  /* ===== Eliminar ===== */
+  const handleDelete = async (id: number | string) => {
+    if (!confirm("¿Eliminar este empleado?")) return;
+    try {
+      await api.delete(`/v1/empleados/${id}/`);
+      await qc.invalidateQueries({ queryKey: ["empleados"] });
+      showToast("Empleado eliminado", "success");
+    } catch {
+      showToast("Error al eliminar", "error");
+    }
+  };
+
+  /* ===== Ver ===== */
+  const [openView, setOpenView] = React.useState(false);
+  const [viewId, setViewId] = React.useState<number | string | null>(null);
+  const handleView = (id: number | string) => { setViewId(id); setOpenView(true); };
+  const closeViewModal = () => { setOpenView(false); setViewId(null); };
+
+  /* ===== Export ===== */
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      await downloadEmpleadosXlsx({ q: search });
+      showToast("Excel exportado", "success");
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      showToast(`Error al exportar Excel: ${msg}`, "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      await exportEmpleadosPdf(search, puestoMap, dptoMap);
+      showToast("PDF exportado", "success");
+    } catch {
+      showToast("Error al exportar PDF", "error");
+    }
+  };
+
+  /* Responsive modal */
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
 
   return (
-    <Paper sx={{ p: 2 }}>
-      <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
-        Empleados
-      </Typography>
-      <Box sx={{ height: 560 }}>
-        <DataGrid
-          rows={data as Empleado[]}
-          columns={columns}
-          loading={isLoading}
-          getRowId={(r) => (r as any).id} // se sigue usando internamente
-          pageSizeOptions={[10, 25, 50]}
-          initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-        />
-      </Box>
-    </Paper>
+    <>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1}
+          alignItems="center"
+          justifyContent="space-between"
+        >
+          <Typography variant="h6" fontWeight={700}>Empleados</Typography>
+          <EmpleadosToolbar
+            search={search}
+            onSearchChange={setSearch}
+            onExportXlsx={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            onNew={openCreateModal}
+            exporting={exporting}
+          />
+        </Stack>
+      </Paper>
+
+      <EmpleadosTable
+        search={search}
+        pageSize={25}
+        onView={(id: number | string) => handleView(id)}
+        onEdit={(id: number | string) => nav(`/empleados/${id}/editar`)}
+        onDelete={(id: number | string) => handleDelete(id)}
+      />
+
+      {/* Ver */}
+      <EmpleadoViewDialog
+        open={openView}
+        empleadoId={viewId}
+        onClose={closeViewModal}
+        puestoMap={puestoMap}
+        dptoMap={dptoMap}
+        onEdit={(id: number | string) => nav(`/empleados/${id}/editar`)}
+      />
+
+      {/* Crear */}
+      <Dialog
+        open={openCreate}
+        onClose={closeCreateModal}
+        fullWidth
+        maxWidth="xl"
+        fullScreen={fullScreen}
+        PaperProps={{ sx: { width: { xs: "100vw", md: "90vw", lg: "85vw" } } }}
+      >
+        <DialogTitle>Nuevo empleado</DialogTitle>
+        <DialogContent dividers sx={{ p: { xs: 1, sm: 2 } }}>
+          <EmpleadoForm
+            onSubmit={handleCreate}
+            loading={savingCreate}
+            error={createError}
+            submitLabel="Crear"
+            wrapInPaper={false}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button startIcon={<Close />} onClick={closeCreateModal}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Editar */}
+      <Dialog
+        open={isEditRoute && openEdit}
+        onClose={closeEditModal}
+        fullWidth
+        maxWidth="xl"
+        fullScreen={fullScreen}
+        PaperProps={{ sx: { width: { xs: "100vw", md: "90vw", lg: "85vw" } } }}
+      >
+        <DialogTitle>
+          {editLoading
+            ? "Cargando"
+            : editData
+              ? `Editar: ${editData.nombres ?? ""} ${editData.apellido_paterno ?? ""}`
+              : "Editar empleado"}
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: { xs: 1, sm: 2 }, minHeight: 200 }}>
+          {!editLoading && editData && (
+            <EmpleadoForm
+              defaultValues={editData}
+              onSubmit={handleUpdate}
+              loading={savingEdit}
+              error={saveEditError}
+              submitLabel="Guardar cambios"
+              wrapInPaper={false}
+            />
+          )}
+          {!editLoading && !editData && saveEditError && (
+            <Box color="error.main">{saveEditError}</Box>
+          )}
+          {editLoading && (
+            <Box sx={{ display: "grid", placeItems: "center", height: 200 }}>
+              Cargando…
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button startIcon={<Close />} onClick={closeEditModal}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }

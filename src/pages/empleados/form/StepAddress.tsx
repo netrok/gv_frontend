@@ -1,13 +1,16 @@
 // src/pages/empleados/form/StepAddress.tsx
 import { Paper, Grid, TextField } from "@mui/material";
-import type { UseFormRegister } from "react-hook-form";
-import type { EmpleadoFormInputs } from "./schema";
+import type { UseFormRegister, FieldErrors } from "react-hook-form";
+import type { EmpleadoFormInputs } from "@/features/empleados/utils/schema";
 
 type Props = {
   register: UseFormRegister<EmpleadoFormInputs>;
+  errors?: FieldErrors<EmpleadoFormInputs>;
 };
 
-export default function StepAddress({ register }: Props) {
+const onlyDigits = (s: string) => s.replace(/\D+/g, "");
+
+export default function StepAddress({ register, errors }: Props) {
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Grid container spacing={2}>
@@ -27,7 +30,17 @@ export default function StepAddress({ register }: Props) {
           <TextField fullWidth label="Estado" {...register("estado")} />
         </Grid>
         <Grid item xs={12} md={4}>
-          <TextField fullWidth label="CP" {...register("cp")} />
+          <TextField
+            fullWidth
+            label="CP"
+            {...register("cp", {
+              setValueAs: (v) =>
+                v == null || v === "" ? v : onlyDigits(String(v)).slice(0, 5),
+            })}
+            inputProps={{ maxLength: 5 }}
+            error={!!errors?.cp}
+            helperText={errors?.cp?.message as any}
+          />
         </Grid>
       </Grid>
     </Paper>
